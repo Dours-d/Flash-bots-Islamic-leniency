@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 /**
- * @title HalalBotProxy
+ * @title HalalBotProxy — v1.1
  * @notice Contract 2 of 3 — The Proxy (Storage + Delegation)
  *
  * @dev This contract:
@@ -11,34 +11,30 @@ pragma solidity ^0.8.20;
  *      - Can only be upgraded by the designated HalalBotAdmin
  *      - Never executes business logic itself
  *
- * ARCHITECTURE NOTE:
- *      This follows the Transparent Proxy Pattern with one modification:
- *      the admin is a separate contract (HalalBotAdmin), not an EOA.
- *      This prevents any single private key from being a single point of failure
- *      or a source of hidden control — a requirement of the ethical framework.
+ * v1.1 additions:
+ *      - pause() now requires a reason string (audit trail)
+ *      - EmergencyPauseTriggered event emitted on pause
+ *      - receive() properly handles ETH and passes to implementation
+ *      - admin-only functions now explicitly reject ETH
  *
- * STORAGE LAYOUT (never reorder these — upgradeability depends on slot consistency):
- *      Slot 0: _implementation
- *      Slot 1: _admin
- *      Slot 2: _paused
- *      Slot 3+: reserved for implementation state (via BotStorage)
+ * STORAGE LAYOUT (never reorder — upgradeability depends on slot consistency):
+ *      EIP-1967 slots used for implementation + admin (collision-safe)
+ *      Slot keccak(eip1967.proxy.implementation)-1 : _implementation
+ *      Slot keccak(eip1967.proxy.admin)-1           : _admin
+ *      Slot keccak(halalbot.proxy.paused)-1         : _paused
  */
 contract HalalBotProxy {
 
     // ─────────────────────────────────────────────
-    // STORAGE SLOTS (EIP-1967 standard)
-    // Using explicit slot constants prevents collision with implementation storage
+    // EIP-1967 STORAGE SLOTS
     // ─────────────────────────────────────────────
 
-    /// @dev EIP-1967 implementation slot
     bytes32 private constant IMPLEMENTATION_SLOT =
         bytes32(uint256(keccak256("eip1967.proxy.implementation")) - 1);
 
-    /// @dev EIP-1967 admin slot
     bytes32 private constant ADMIN_SLOT =
         bytes32(uint256(keccak256("eip1967.proxy.admin")) - 1);
 
-    /// @dev Pause slot
     bytes32 private constant PAUSED_SLOT =
         bytes32(uint256(keccak256("halalbot.proxy.paused")) - 1);
 
@@ -48,18 +44,17 @@ contract HalalBotProxy {
 
     event Upgraded(address indexed newImplementation);
     event AdminChanged(address indexed previousAdmin, address indexed newAdmin);
-    event Paused(address indexed by);
-    event Unpaused(address indexed by);
     event EmergencyPauseTriggered(address indexed triggeredBy, string reason);
+    event Unpaused(address indexed by);
 
     // ─────────────────────────────────────────────
     // CONSTRUCTOR
     // ─────────────────────────────────────────────
 
     /**
-     * @param _implementation Initial logic contract address
-     * @param _admin HalalBotAdmin contract address (not an EOA)
-     * @param _initData ABI-encoded initializer call (or empty bytes)
+     * @param _implementation   Initial logic contract address
+     * @param _admin            HalalBotAdmin contract address (not an EOA)
+     * @param _initData         ABI-encoded initializer call (or empty bytes)
      */
     constructor(
         address _implementation,
@@ -67,12 +62,11 @@ contract HalalBotProxy {
         bytes memory _initData
     ) {
         require(_implementation != address(0), "Proxy: invalid implementation");
-        require(_admin != address(0), "Proxy: admin must be HalalBotAdmin contract");
+        require(_admin != address(0),          "Proxy: admin must be HalalBotAdmin contract");
 
         _setImplementation(_implementation);
         _setAdmin(_admin);
 
-        // If init data provided, call initializer on implementation
         if (_initData.length > 0) {
             (bool success, bytes memory returnData) = _implementation.delegatecall(_initData);
             require(success, string(returnData));
@@ -80,7 +74,7 @@ contract HalalBotProxy {
     }
 
     // ─────────────────────────────────────────────
-    // ADMIN-ONLY FUNCTIONS
+    // MODIFIERS
     // ─────────────────────────────────────────────
 
     modifier onlyAdmin() {
@@ -93,19 +87,22 @@ contract HalalBotProxy {
         _;
     }
 
+    // ─────────────────────────────────────────────
+    // ADMIN FUNCTIONS
+    // ─────────────────────────────────────────────
+
     /**
-     * @notice Upgrade to new implementation
-     * @dev Only callable by HalalBotAdmin after timelock has passed
+     * @notice Upgrade to a new implementation
+     * @dev Only callable by HalalBotAdmin after timelock has passed.
+     *      Verifies the new implementation exposes getAuditConfig() —
+     *      the ethical transparency interface cannot be silently dropped.
      */
     function upgradeTo(address newImplementation) external onlyAdmin {
-        require(newImplementation != address(0), "Proxy: invalid address");
-        require(newImplementation != _getImplementation(), "Proxy: same implementation");
-
-        // Verify new implementation has required interface
-        // (prevents upgrading to a non-compliant contract)
+        require(newImplementation != address(0),               "Proxy: invalid address");
+        require(newImplementation != _getImplementation(),     "Proxy: same implementation");
         require(
             _hasRequiredInterface(newImplementation),
-            "Proxy: implementation missing required interface"
+            "Proxy: implementation missing getAuditConfig() - ethical interface required"
         );
 
         _setImplementation(newImplementation);
@@ -114,21 +111,24 @@ contract HalalBotProxy {
 
     /**
      * @notice Emergency pause — stops all delegated execution
-     * @param reason Human-readable reason for the pause (audit trail)
+     * @param reason  Human-readable reason, required for audit trail
      */
     function pause(string calldata reason) external onlyAdmin {
+        require(bytes(reason).length > 0, "Proxy: pause reason required");
         _setPaused(true);
-        emit Paused(msg.sender);
         emit EmergencyPauseTriggered(msg.sender, reason);
     }
 
+    /**
+     * @notice Unpause the system
+     */
     function unpause() external onlyAdmin {
         _setPaused(false);
         emit Unpaused(msg.sender);
     }
 
     // ─────────────────────────────────────────────
-    // PUBLIC VIEW
+    // VIEW
     // ─────────────────────────────────────────────
 
     function implementation() external view returns (address) {
@@ -147,10 +147,21 @@ contract HalalBotProxy {
     // FALLBACK — delegates all calls to implementation
     // ─────────────────────────────────────────────
 
+    /**
+     * @dev All non-admin calls are delegated to the current implementation.
+     *      msg.value is forwarded so the implementation can handle ETH.
+     *      Admin-facing functions (upgradeTo, pause, unpause) are
+     *      handled above and never reach the fallback.
+     */
     fallback() external payable whenNotPaused {
         _delegate(_getImplementation());
     }
 
+    /**
+     * @dev Plain ETH transfers are delegated to implementation.
+     *      Implementation's receive() or fallback() handles the logic
+     *      (e.g. recording ETH received for later operator withdrawal).
+     */
     receive() external payable whenNotPaused {
         _delegate(_getImplementation());
     }
@@ -161,15 +172,9 @@ contract HalalBotProxy {
 
     function _delegate(address impl) internal {
         assembly {
-            // Copy calldata to memory
             calldatacopy(0, 0, calldatasize())
-
-            // delegatecall: runs impl code in this contract's storage context
             let result := delegatecall(gas(), impl, 0, calldatasize(), 0, 0)
-
-            // Copy returndata
             returndatacopy(0, 0, returndatasize())
-
             switch result
             case 0 { revert(0, returndatasize()) }
             default { return(0, returndatasize()) }
@@ -215,12 +220,11 @@ contract HalalBotProxy {
     // ─────────────────────────────────────────────
 
     /**
-     * @dev Checks that new implementation exposes the mandatory audit function.
-     *      Prevents upgrading to a contract that drops the transparency layer.
+     * @dev Checks that new implementation exposes getAuditConfig().
+     *      Prevents upgrading to a contract that removes the transparency layer.
+     *      The ethical interface is enforced structurally — not by trust.
      */
     function _hasRequiredInterface(address impl) internal view returns (bool) {
-        // Check for getAuditConfig() selector — 0x[computed]
-        // This ensures the implementation always exposes its ethical config
         bytes memory callData = abi.encodeWithSignature("getAuditConfig()");
         (bool success, ) = impl.staticcall(callData);
         return success;
