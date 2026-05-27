@@ -1,6 +1,7 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("@typechain/hardhat");
 require("dotenv").config();
+require("./tasks/deploy.js");
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
