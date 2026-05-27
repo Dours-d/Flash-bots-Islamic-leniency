@@ -42,6 +42,20 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
     // ─────────────────────────────────────────────
     // STORAGE (must match proxy storage layout exactly)
     // ─────────────────────────────────────────────
+    // STORAGE LAYOUT (V1):
+    // Slot 0: UNISWAP_V3_FACTORY
+    // Slot 1: _activeSwapPool
+    // Slot 2: operator
+    // Slot 3: adminContract
+    // Slot 4: charityWallet
+    // Slot 5: victimRefundBps
+    // Slot 6: charityBps
+    // Slot 7: totalExecutions
+    // Slot 8: totalProfitCaptured
+    // Slot 9: totalReturnedToVictims
+    // Slot 10: totalSentToCharity
+    // Slot 11: warningSystemEnabled
+    // Slot 12+: Reserved for V2 additions
 
     address public UNISWAP_V3_FACTORY;
 
@@ -392,7 +406,7 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
             address(this),
             zeroForOne,
             int256(amountIn),
-            zeroForOne ? 4295128740 : 1461446703485210103287273052203988822378723970341, // price limits
+            zeroForOne ? MIN_SQRT_RATIO + 1 : MAX_SQRT_RATIO - 1, // price limits
             abi.encode(tokenIn)
         );
 
