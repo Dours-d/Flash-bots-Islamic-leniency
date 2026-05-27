@@ -4,6 +4,11 @@ module.exports = buildModule("HalalFlashLoanBot", (m) => {
   const charityWallet = m.getParameter("charityWallet", "0x0000000000000000000000000000000000000000");
   const victimRefundBps = m.getParameter("victimRefundBps", 2000);
   const charityBps = m.getParameter("charityBps", 0);
+  
+  // Uniswap V3 Factory addresses
+  // Arbitrum Sepolia: 0x4200000000000000000000000000000000000010
+  // Arbitrum Mainnet: 0x1F98431c8aD98523631AE4a59f267346ea31F984
+  const uniswapV3Factory = m.getParameter("uniswapV3Factory", "0x4200000000000000000000000000000000000010");
 
   const admin = m.contract("HalalBotAdmin", [charityWallet]);
   const implementation = m.contract("HalalBotV1");
@@ -16,6 +21,7 @@ module.exports = buildModule("HalalFlashLoanBot", (m) => {
     charityWallet,
     victimRefundBps,
     charityBps,
+    uniswapV3Factory,
   ]);
 
   const proxy = m.contract("HalalBotProxy", [

@@ -43,7 +43,10 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
     // STORAGE (must match proxy storage layout exactly)
     // ─────────────────────────────────────────────
 
-    address public constant UNISWAP_V3_FACTORY = 0x1F98431c8aD98523631AE4a59f267346ea31F984; // Mainnet, update for testnet
+    address public UNISWAP_V3_FACTORY;
+
+    // Transient lock for swap callback verification
+    address private _activeSwapPool;
 
     address public operator;
     address public adminContract;       // HalalBotAdmin
@@ -102,6 +105,12 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
     error FlashSwapCallerNotPool();
     error ArbitrageFailedToCoverLoan();
     error InvalidPool();
+    error InvalidSwapCaller();
+    error InvalidArbPool();
+
+    // Uniswap V3 price limits (sqrt price limits)
+    uint160 internal constant MIN_SQRT_RATIO = 4295128739;
+    uint160 internal constant MAX_SQRT_RATIO = 1461446703485210103287273052203988822378723970342;
 
     // ─────────────────────────────────────────────
     // STRUCTS
@@ -133,19 +142,22 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
         address _adminContract,
         address _charityWallet,
         uint256 _victimRefundBps,
-        uint256 _charityBps
+        uint256 _charityBps,
+        address _uniswapV3Factory
     ) external initializer {
         require(_operator != address(0), "Init: operator required");
         require(_adminContract != address(0), "Init: admin required");
         require(_charityWallet != address(0), "Init: charity wallet required");
         require(_victimRefundBps >= 2000, "Init: victim refund min 20%");
         require(_victimRefundBps + _charityBps <= 9000, "Init: operator min 10%");
+        require(_uniswapV3Factory != address(0), "Init: factory required");
 
         operator = _operator;
         adminContract = _adminContract;
         charityWallet = _charityWallet;
         victimRefundBps = _victimRefundBps;
         charityBps = _charityBps;
+        UNISWAP_V3_FACTORY = _uniswapV3Factory;
         warningSystemEnabled = true;
     }
 
@@ -257,18 +269,18 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
 
         // ── STEP 1: Execute arbitrage on the buy pool ──
         // Victim's trade created a price imbalance — we buy the underpriced asset
+        _requireLegitPool(decoded.poolBuy);
         uint256 amountOut = _swapOnPool(
             decoded.poolBuy,
             decoded.tokenBorrow,
-            decoded.tokenArb,
             decoded.amountBorrowed
         );
 
         // ── STEP 2: Sell on the fair-price pool ──
+        _requireLegitPool(decoded.poolSell);
         uint256 returnAmount = _swapOnPool(
             decoded.poolSell,
             decoded.tokenArb,
-            decoded.tokenBorrow,
             amountOut
         );
 
@@ -366,9 +378,11 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
     function _swapOnPool(
         address pool,
         address tokenIn,
-        address /* tokenOut */,
         uint256 amountIn
     ) internal returns (uint256 amountOut) {
+        // Set active pool for callback verification
+        _activeSwapPool = pool;
+
         // Determine swap direction
         address token0 = IUniswapV3Pool(pool).token0();
         bool zeroForOne = tokenIn == token0;
@@ -382,6 +396,9 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
             abi.encode(tokenIn)
         );
 
+        // Clear active pool
+        _activeSwapPool = address(0);
+
         amountOut = uint256(-(zeroForOne ? amount1Delta : amount0Delta));
     }
 
@@ -392,6 +409,15 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
     ) internal view returns (address pool) {
         pool = IUniswapV3Factory(UNISWAP_V3_FACTORY).getPool(tokenA, tokenB, feeTier);
         if (pool == address(0)) revert InvalidPool();
+    }
+
+    function _requireLegitPool(address pool) internal view {
+        // Verify the pool was deployed by the official factory
+        address token0 = IUniswapV3Pool(pool).token0();
+        address token1 = IUniswapV3Pool(pool).token1();
+        uint24 fee = IUniswapV3Pool(pool).fee();
+        address expected = IUniswapV3Factory(UNISWAP_V3_FACTORY).getPool(token0, token1, fee);
+        if (expected != pool) revert InvalidArbPool();
     }
 
     // ─────────────────────────────────────────────
@@ -408,6 +434,9 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
         int256 amount1Delta,
         bytes calldata data
     ) external override {
+        // SECURITY: Verify caller is the active swap pool
+        if (msg.sender != _activeSwapPool) revert InvalidSwapCaller();
+
         address tokenIn = abi.decode(data, (address));
         uint256 amountOwed = amount0Delta > 0
             ? uint256(amount0Delta)
