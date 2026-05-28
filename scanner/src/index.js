@@ -12,7 +12,7 @@ const RPC_URL = process.env.ARBITRUM_SEPOLIA_RPC_URL || 'https://sepolia-rollup.
 const PRIVATE_KEY = process.env.PRIVATE_KEY.startsWith('0x') 
   ? process.env.PRIVATE_KEY.slice(2) 
   : process.env.PRIVATE_KEY;
-const PROXY_ADDRESS = '0xc9C90F18631bc5C4F39EF816a83463A12a218776';
+const PROXY_ADDRESS = '0x148699471b17D1Bf895D0e68ecC4eD4C277cd3Af';
 const UNISWAP_V3_FACTORY = '0x4200000000000000000000000000000000000010';
 const READ_ONLY_MODE = true; // Set to false if using operator's private key
 

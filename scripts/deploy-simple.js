@@ -6,10 +6,10 @@ async function main() {
   console.log("Balance:", (await ethers.provider.getBalance(deployer.address)).toString());
 
   // Parameters
-  const charityWallet = "0x2EDBF113E633430eD1ba776F961da2D06AAb7735";
-  const operator = "0x63fb57a83bcbe2243fa4380ef00a79239ee51c3a7c53c2e36dc85ad289cf955b";
-  const victimRefundBps = 2000;
-  const charityBps = 0;
+  const charityWallet = "0x861c0Fab00E75e82CEfAfC5D4390395F45aE4c80";
+  const operator = "0xB429057aD392ea5564E47297F49f506039f55200";
+  const victimRefundBps = 1500; // 15%
+  const charityBps = 500; // 5%
   const uniswapV3Factory = "0x4200000000000000000000000000000000000010"; // Arbitrum Sepolia
 
   console.log("\n=== Step 1: Deploy HalalBotAdmin ===");

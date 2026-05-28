@@ -186,7 +186,7 @@ contract HalalBotV1 is Initializable, IUniswapV3FlashCallback, IUniswapV3SwapCal
         require(_adminContract   != address(0), "Init: admin required");
         require(_charityWallet   != address(0), "Init: charity wallet required");
         require(_uniswapV3Factory != address(0), "Init: factory required");
-        require(_victimRefundBps >= 2000,        "Init: victim refund min 20%");
+        require(_victimRefundBps >= 1500,        "Init: victim refund min 15%");
         require(_victimRefundBps + _charityBps <= 9000, "Init: operator min 10%");
 
         UNISWAP_V3_FACTORY  = _uniswapV3Factory;

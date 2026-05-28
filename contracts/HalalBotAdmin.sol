@@ -77,7 +77,7 @@ contract HalalBotAdmin is Ownable2Step {
     // CONSTANTS
     // ─────────────────────────────────────────────
 
-    uint256 public constant MIN_VICTIM_REFUND_BPS  = 2000;  // 20% floor — enforced by code
+    uint256 public constant MIN_VICTIM_REFUND_BPS  = 1500;  // 15% floor — enforced by code
     uint256 public constant MIN_CHARITY_BPS        = 500;   // 5% floor
     uint256 public constant MIN_TIMELOCK_BLOCKS    = 50;    // ~10 min on Arbitrum
 
@@ -85,8 +85,8 @@ contract HalalBotAdmin is Ownable2Step {
     // STATE
     // ─────────────────────────────────────────────
 
-    uint256 public victimRefundBps  = 2000;
-    uint256 public charityBps       = 1000;
+    uint256 public victimRefundBps  = 1500;
+    uint256 public charityBps       = 500;
     address public charityWallet;
     uint256 public upgradeTimelockBlocks = MIN_TIMELOCK_BLOCKS;
 
