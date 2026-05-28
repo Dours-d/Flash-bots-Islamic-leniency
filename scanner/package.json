@@ -1,0 +1,15 @@
+{
+  "name": "halalbot-scanner",
+  "version": "1.0.0",
+  "description": "Mempool scanner for HalalBot - detects potential sandwich attacks",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node src/test.js"
+  },
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "dotenv": "^16.0.0"
+  }
+}
