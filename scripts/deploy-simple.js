@@ -10,7 +10,7 @@ async function main() {
   const operator = "0xB429057aD392ea5564E47297F49f506039f55200";
   const victimRefundBps = 1500; // 15%
   const charityBps = 500; // 5%
-  const uniswapV3Factory = "0x4200000000000000000000000000000000000010"; // Arbitrum Sepolia
+  const uniswapV3Factory = "0x1F98431c8aD98523631AE4a59f267346ea31F984"; // Arbitrum Mainnet
 
   console.log("\n=== Step 1: Deploy HalalBotAdmin ===");
   const Admin = await ethers.getContractFactory("HalalBotAdmin");
